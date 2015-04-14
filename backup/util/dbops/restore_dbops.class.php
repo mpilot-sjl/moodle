@@ -931,6 +931,7 @@ abstract class restore_dbops {
             }
         }
 
+        $tempdbupdates = array();
         $fs = get_file_storage();         // Get moodle file storage
         $basepath = $basepath . '/files/';// Get backup file pool base
         // Report progress before query.
@@ -1031,12 +1032,12 @@ abstract class restore_dbops {
                     }
                 }
 
-                // store the the new contextid and the new itemid in case we need to remap
-                // references to this file later
-                $DB->update_record('backup_files_temp', array(
-                    'id' => $rec->bftid,
-                    'newcontextid' => $newcontextid,
-                    'newitemid' => $rec->newitemid), true);
+                // Store temp table updates for processing after recordset is closed.
+                $updatedetails = new stdClass();
+                $updatedetails->id = $rec->bftid;
+                $updatedetails->newcontextid = $newcontextid;
+                $updatedetails->newitemid = $rec->newitemid;
+                $tempdbupdates[] = clone($updatedetails);
 
             } else {
                 // this is an alias - we can't create it yet so we stash it in a temp
@@ -1053,6 +1054,16 @@ abstract class restore_dbops {
             }
         }
         $rs->close();
+        // Recordset is closed, process temp table updates.
+        foreach ($tempdbupdates as $tempdbupdate) {
+            // Store the the new contextid and the new itemid in case we need to remap...
+            // ...references to this file later.
+            $DB->update_record('backup_files_temp', array(
+                'id' => $tempdbupdate->id,
+                'newcontextid' => $tempdbupdate->newcontextid,
+                'newitemid' => $tempdbupdate->newitemid)
+            );
+        }
         return $results;
     }
 
