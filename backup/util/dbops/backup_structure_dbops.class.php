@@ -157,6 +157,7 @@ abstract class backup_structure_dbops extends backup_dbops {
      */
     public static function move_annotations_to_final($backupid, $itemname, \core\progress\base $progress) {
         global $DB;
+        $tempdbupdates = array();
         $progress->start_progress('move_annotations_to_final');
         $rs = $DB->get_recordset('backup_ids_temp', array('backupid' => $backupid, 'itemname' => $itemname));
         $progress->progress();
@@ -165,11 +166,24 @@ abstract class backup_structure_dbops extends backup_dbops {
             if (! $DB->record_exists('backup_ids_temp', array('backupid' => $backupid,
                                                               'itemname' => $itemname . 'final',
                                                               'itemid' => $annotation->itemid))) {
-                $DB->set_field('backup_ids_temp', 'itemname', $itemname . 'final', array('id' => $annotation->id));
+                // Store temp table updates for processing after recordset is closed.
+                $updatedetails = new stdClass();
+                $updatedetails->annotationid = $annotation->id;
+                $updatedetails->itemname = $itemname;
+                $tempdbupdates[] = clone($updatedetails);
             }
             $progress->progress();
         }
         $rs->close();
+        // Recordset closed, process temp table updates.
+        foreach ($tempdbupdates as $tempdbupdate) {
+            $DB->set_field(
+                'backup_ids_temp',
+                'itemname',
+                $tempdbupdate->itemname . 'final',
+                array('id' => $tempdbupdate->annotationid)
+            );
+        }
         // All the remaining $itemname annotations can be safely deleted
         $DB->delete_records('backup_ids_temp', array('backupid' => $backupid, 'itemname' => $itemname));
         $progress->end_progress();
